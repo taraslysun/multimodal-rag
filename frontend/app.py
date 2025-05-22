@@ -19,6 +19,10 @@ st.markdown(
 Type a **message** (e.g., “What's the latest news on the AI ethics?”) and/or upload an **image** (e.g., a chart).  
 When you click **Send**, our backend queries a joint FAISS index of text & image embeddings, retrieves the most relevant pieces, and calls Google Gemini to generate a multimodal response.
 
+**Articles are retrieved from [The Batch](https://www.deeplearning.ai/the-batch/) newsletter by DeepLearning.AI.**
+
+[GitHub repository](https://github.com/taraslysun/multimodal-rag)
+
 The conversation will appear below in a chat format. Any inline Markdown image syntax in the model’s response will render the image.
 """
 )
