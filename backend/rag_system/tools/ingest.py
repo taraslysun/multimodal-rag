@@ -9,7 +9,8 @@ from bs4 import BeautifulSoup
 from pymongo import MongoClient
 import sys
 sys.path.append("..")
-
+import base64
+import urllib.parse
 from ..utils.faiss_utils import save_faiss_index
 from ..utils.embedding_utils import normalize_embedding
 from google.genai import types
@@ -111,12 +112,14 @@ def process_article_texts(rag, article: dict):
 # Helper: Process one article’s images - return (embeddings, docs)
 # Each image yields up to four modalities: raw image, OCR text, Gemini description, alt text
 # ─────────────────────────────────────────────────────────────────────────────
+
 def process_article_images(rag, article: dict):
     """
     1) Gathers all image URLs (feature_img + img tags).
-    2) Downloads each image, runs OCR, calls Gemini for description.
-    3) Embeds up to four modalities: raw image, OCR text, Gemini desc, alt text.
-    4) Builds image_doc skeletons (vector_id=None placeholder).
+    2) For data:URI images, decodes inline bytes; for other URLs, uses rag.download_image_bytes().
+    3) Runs OCR, calls Gemini for description.
+    4) Embeds up to four modalities: raw image, OCR text, Gemini desc, alt text.
+    5) Builds image_doc skeletons (vector_id=None placeholder).
     Returns two lists: [np.array(dtype=float32)], [dict(documents)].
     """
     article_id      = article["uuid"]
@@ -128,20 +131,68 @@ def process_article_images(rag, article: dict):
     image_embs = []
     image_docs = []
 
+    # 1) Gather all candidate URLs:
+    def collect_image_urls(html: str, feature_img: str = None):
+        urls = set()
+        if feature_img:
+            urls.add(feature_img)
+        soup = BeautifulSoup(html, "html.parser")
+        for img_tag in soup.find_all("img"):
+            src = img_tag.get("src") or img_tag.get("data-src") or img_tag.get("data-lazy-src")
+            if src:
+                urls.add(src)
+        return urls
+
     image_urls = collect_image_urls(article.get("html", ""), feature_img)
+    base_url = "https://www.deeplearning.ai/"
 
     for idx, img_url in enumerate(image_urls):
-        img_bytes = rag.download_image_bytes(img_url)
+        # If it's a relative path, prepend base_url:
+        if img_url.startswith("/"):
+            img_url = base_url + img_url
+
+        # 2) Fetch raw bytes, with special handling for data: URIs
+        img_bytes = None
+        if img_url.startswith("data:"):
+            # Example formats:
+            #   data:image/png;base64,iVBORw0KGgoAAAANSUhEUg...
+            #   data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg'...
+            try:
+                header, payload = img_url.split(",", 1)
+                if header.endswith(";base64"):
+                    # Base64‐encoded data URI
+                    img_bytes = base64.b64decode(payload)
+                else:
+                    # URL‐encoded (e.g. SVG/XML), decode percent‐encoding
+                    # Note: for SVG/XML, this might not yield a raster for PIL, so we’ll try but likely skip.
+                    decoded = urllib.parse.unquote(payload).encode("utf-8")
+                    img_bytes = decoded
+            except Exception as e:
+                logger.warning(f"Could not decode data URI for {img_url[:30]}…: {e}")
+                img_bytes = None
+        else:
+            # Normal HTTP(S) URL:
+            try:
+                img_bytes = rag.download_image_bytes(img_url)
+            except Exception as e:
+                logger.warning(f"Failed to download image {img_url}: {e}")
+                img_bytes = None
+
         if not img_bytes:
+            # Skip if we still didn’t get bytes
             continue
 
+        # 3) Attempt to open with PIL, converting palette→RGBA to squash transparency warning
         try:
-            pil = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+            pil = Image.open(io.BytesIO(img_bytes))
+            pil = pil.convert("RGBA")  # always convert to RGBA first
+            # If you really want RGB only (dropping alpha), do pil = pil.convert("RGB") here:
+            pil = pil.convert("RGB")
         except Exception as e:
-            logger.warning(f"Failed to open image {img_url}: {e}")
+            logger.warning(f"Failed to open image (PIL) from {img_url[:50]}…: {e}")
             continue
 
-        # OCR
+        # OCR pass
         try:
             ocr_text = pytesseract.image_to_string(pil).strip()
         except Exception as e:
@@ -151,7 +202,10 @@ def process_article_images(rag, article: dict):
         # Gemini description
         desc_text = ""
         try:
-            prompt = "Generate a detailed, descriptive alt-text for the image. If it is a table or chart, describe the data and try to make a text table."
+            prompt = (
+                "Generate a detailed, descriptive alt-text for the image. "
+                "If it is a table or chart, describe the data and try to make a text table."
+            )
             img_part = types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg")
             resp = rag.gemini_client.models.generate_content(
                 model=rag.gemini_model_name,
@@ -162,17 +216,17 @@ def process_article_images(rag, article: dict):
             logger.warning(f"Gemini description failed for {img_url}: {e}")
             desc_text = ""
 
-        # Collect up to four embedding modalities: raw image, OCR text, Gemini desc, alt text
+        # 4) Embed up to four modalities: raw image, OCR, Gemini, alt text
         mods = []
 
-        # 1) raw image - CLIP
+        # 4.1) raw image
         try:
-            img_emb = rag.embed_image(pil)  # returns normalized float32 np.array
+            img_emb = rag.embed_image(pil)
             mods.append(("image", img_emb))
         except Exception as e:
             logger.warning(f"CLIP embed failed for image {img_url}: {e}")
 
-        # 2) OCR text - SentenceTransformer
+        # 4.2) OCR text
         if ocr_text:
             try:
                 ocr_emb = rag.embed_text(ocr_text)
@@ -180,7 +234,7 @@ def process_article_images(rag, article: dict):
             except Exception as e:
                 logger.warning(f"Text embed failed for OCR on {img_url}: {e}")
 
-        # 3) Gemini description - SentenceTransformer
+        # 4.3) Gemini description text
         if desc_text:
             try:
                 desc_emb = rag.embed_text(desc_text)
@@ -188,7 +242,7 @@ def process_article_images(rag, article: dict):
             except Exception as e:
                 logger.warning(f"Text embed failed for Gemini description on {img_url}: {e}")
 
-        # 4) Alt text - SentenceTransformer
+        # 4.4) Alt text
         if feature_img_alt:
             try:
                 alt_emb = rag.embed_text(feature_img_alt)
@@ -196,20 +250,20 @@ def process_article_images(rag, article: dict):
             except Exception as e:
                 logger.warning(f"Text embed failed for alt_text on {img_url}: {e}")
 
-        # Build embeddings + docs for each modality found
+        # 5) Build embeddings + documents
         for mtype, emb in mods:
             emb32 = emb.astype(np.float32)
             image_embs.append(emb32)
             image_docs.append({
-                "article_id":    article_id,
-                "image_id":      f"{article_id}_img_{idx}",
-                "image_url":     img_url,
-                "ocr_text":      ocr_text,
-                "desc_text":     desc_text,
-                "alt_text":      feature_img_alt,
-                "source_url":    url,
-                "vector_id":     None,    # to fill later
-                "type":          mtype,
+                "article_id":   article_id,
+                "image_id":     f"{article_id}_img_{idx}",
+                "image_url":    img_url,
+                "ocr_text":     ocr_text,
+                "desc_text":    desc_text,
+                "alt_text":     feature_img_alt,
+                "source_url":   url,
+                "vector_id":    None,       # to assign after adding to FAISS
+                "type":         mtype,
             })
 
     return image_embs, image_docs
@@ -244,12 +298,10 @@ def batch_ingest_all(rag, batch_size: int = 50, mini_batch_size: int = 50):
     start = time.time()
     intra_batch_start = time.time()
     for article in cursor:
-        # --- Process texts ---
         t_embs, t_docs = process_article_texts(rag, article)
         all_text_embs.extend(t_embs)
         all_text_docs.extend(t_docs)
 
-        # --- Process images ---
         i_embs, i_docs = process_article_images(rag, article)
         all_img_embs.extend(i_embs)
         all_img_docs.extend(i_docs)
@@ -272,14 +324,13 @@ def batch_ingest_all(rag, batch_size: int = 50, mini_batch_size: int = 50):
             print(f"Total time taken so far: {time.time() - start:.2f} seconds")
             print(f"Total processed: {total_processed} articles\n")
 
-    # Final flush for any remaining
     if all_text_embs or all_img_embs:
         _flush_to_faiss_and_mongo(rag, 
                                   all_text_embs, all_text_docs, 
                                   all_img_embs, all_img_docs)
         logger.info(f"Final flush done after total {total_processed} articles.")
 
-    # Save FAISS index once at the very end
+    # Save FAISS index at the very end
     save_faiss_index(rag.faiss_index, FAISS_INDEX_PATH)
     logger.info(f"Batch ingest complete: processed {total_processed} articles.")
 

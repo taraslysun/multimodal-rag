@@ -25,5 +25,5 @@ class IngestCollectionRequest(BaseModel):
     source_collection_name: str
 
 
-class IngestSingleRequest(IngestRequest):
+class IngestSingleRequest(BaseModel):
     url: str
