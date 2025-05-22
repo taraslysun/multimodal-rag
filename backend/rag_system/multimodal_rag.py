@@ -2,13 +2,15 @@ import numpy as np
 import torch
 import requests
 import io
+import base64
 from PIL import Image
-from typing import List, Optional, Dict, Set
+from typing import List, Optional, Dict, Set, Any
 import concurrent.futures
 from functools import lru_cache
 
-from .utils import normalize_embedding
+from .utils.embedding_utils import normalize_embedding
 from .prompt_builder import build_gemini_prompt
+
 from google.genai import types as gemini_types
 import logging
 
@@ -39,18 +41,29 @@ class MultimodalRAG:
         self.gemini_model_name = gemini_model_name
         self.top_k             = top_k
         self.max_workers       = max_workers
+        # Add cache for query results
+        self.query_cache = {}
 
+    @lru_cache(maxsize=100)  # Cache text embeddings
     def embed_text(self, query: str) -> np.ndarray:
         with torch.no_grad():
             emb = self.text_model.encode(query, convert_to_numpy=True)
         return normalize_embedding(emb)
 
-    def embed_image(self, pil_image: Image.Image) -> np.ndarray:
+    @lru_cache(maxsize=50)  # Cache image embeddings by hash
+    def _embed_image_with_cache(self, img_hash: str, pil_image: Image.Image) -> np.ndarray:
+        """Helper method to enable caching of image embeddings"""
         inputs = self.clip_processor(images=pil_image, return_tensors="pt").to(self.clip_model.device)
         with torch.no_grad():
             img_features = self.clip_model.get_image_features(**inputs)
         img_features = img_features.cpu().numpy().squeeze()
         return normalize_embedding(img_features)
+
+    def embed_image(self, pil_image: Image.Image) -> np.ndarray:
+        """Get image embedding with caching based on image hash"""
+        # Generate a hash of the image for caching
+        img_hash = str(hash(pil_image.tobytes()))
+        return self._embed_image_with_cache(img_hash, pil_image)
 
     def combine_embeddings(
         self, text_emb: Optional[np.ndarray], image_emb: Optional[np.ndarray]
@@ -103,7 +116,9 @@ class MultimodalRAG:
         Get a detailed description of an image using Gemini.
         """
         try:
-            prompt = "Generate a detailed, descriptive caption for this image. Identify all key elements, text, objects, and the overall context."
+            prompt = "Provide a detailed description of the image."
+            prompt += "Do not include any unnecesary text, just the description."
+            prompt += "If the image has text, plots or graphs, describe them in detail."
             img_part = gemini_types.Part.from_bytes(
                 data=image_bytes,
                 mime_type="image/jpeg",
@@ -140,28 +155,39 @@ class MultimodalRAG:
     def query_and_generate(
         self,
         text_query: Optional[str] = None,
-        image_file: Optional[bytes] = None,
+        image_file: Optional[str] = None,  # Now expects base64 string
+        chat_history: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
-        # Validate input
         if text_query is None and image_file is None:
             return "Error: At least one of text_query or image_file must be provided."
+        
+        # Create a cache key if caching is desired
+        cache_key = None
+        if text_query:
+            cache_key = text_query
+            if chat_history:
+                # Add last few messages to cache key
+                for msg in chat_history[-3:]:
+                    cache_key += msg.get("content", "")[:50]
+        
+        # Check cache first if we have a cache_key
+        if cache_key and cache_key in self.query_cache:
+            logger.info(f"Cache hit for query: {text_query[:30]}...")
+            return self.query_cache[cache_key]
             
         try:
             # 1. Get image description if image is present
             image_description = ""
             pil_img = None
+            image_bytes = None
             if image_file:
                 try:
-                    # Get a detailed description from Gemini
-                    image_description = self.get_image_description(image_file)
-                    
-                    # Load the image for embedding
+                    image_bytes = base64.b64decode(image_file)
+                    image_description = self.get_image_description(image_bytes)
                     try:
-                        # First try reading with TorchByteTensor
-                        pil_img = Image.open(torch.ByteTensor(bytearray(image_file))).convert("RGB")
+                        pil_img = Image.open(torch.ByteTensor(bytearray(image_bytes))).convert("RGB")
                     except Exception:
-                        # Fallback to PIL from bytes
-                        pil_img = Image.open(io.BytesIO(image_file)).convert("RGB")
+                        pil_img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
                 except Exception as e:
                     logger.error(f"Error processing image: {e}")
 
@@ -170,7 +196,7 @@ class MultimodalRAG:
             enhanced_query = text_query or ""
             if image_description:
                 if enhanced_query:
-                    enhanced_query = f"{enhanced_query}\n\nImage description: {image_description}"
+                    enhanced_query = f"{enhanced_query}\n\nInput Image description: {image_description}"
                 else:
                     enhanced_query = f"Image description: {image_description}"
             
@@ -178,19 +204,21 @@ class MultimodalRAG:
                 text_emb = self.embed_text(enhanced_query)
 
             # 3. Embed image if present
-            image_emb = None
-            if pil_img is not None:
-                image_emb = self.embed_image(pil_img)
+            # image_emb = None
+            # if pil_img is not None:
+            #     image_emb = self.embed_image(pil_img)
 
             # 4. Combine into one query embedding
-            query_emb = self.combine_embeddings(text_emb, image_emb)
+            # query_emb = self.combine_embeddings(text_emb, image_emb)
+
 
             # 5. Retrieve top-K vector_ids from FAISS
-            top_vector_ids = self.retrieve_top_k(query_emb)
+            top_vector_ids = self.retrieve_top_k(text_emb)
             if not top_vector_ids:
                 return "No relevant content found."
+    
 
-            # 6. Fetch matching documents from both collections
+
             text_hits, image_hits = self.fetch_docs_by_vector_ids(top_vector_ids)
 
             if not text_hits and not image_hits:
@@ -204,17 +232,30 @@ class MultimodalRAG:
                 image_hits, key=lambda d: top_vector_ids.index(d["vector_id"])
             )
 
-            # 8. Build Gemini prompt using text_hits_sorted and image_hits_sorted
+            # print(f"Text hits: {len(text_hits_sorted)}, Image hits: {len(image_hits_sorted)}")
+            # for i, hit in enumerate(text_hits_sorted):
+            #     print(f"Text hit {i}: {hit['text_chunk'][:50]}...")
+            #     print(f"Text hit {i} vector_id: {hit['vector_id']}")
+            # for i, hit in enumerate(image_hits_sorted):
+            #     print(f"Image hit {i}: {hit['desc_text'][:50]}...")
+            #     print(f"Image hit {i} vector_id: {hit['vector_id']}")
+
+
             user_query_with_desc = enhanced_query if image_description else (text_query or "")
-            prompt_text = build_gemini_prompt(text_hits_sorted, image_hits_sorted, user_query_with_desc)
+            prompt_text = build_gemini_prompt(
+                text_hits_sorted, 
+                image_hits_sorted, 
+                user_query_with_desc, 
+                chat_history
+            )
 
             # 9. Download actual image bytes for any image hits, wrap as Parts (in parallel)
             image_parts = []
             
             # First add the query image if present
-            if image_file:
+            if image_bytes:
                 query_img_part = gemini_types.Part.from_bytes(
-                    data=image_file,
+                    data=image_bytes,
                     mime_type="image/jpeg",
                 )
                 image_parts.append(query_img_part)
@@ -232,6 +273,18 @@ class MultimodalRAG:
             )
 
             answer = response.text or ""
+            
+            # Store in cache if we have a cache_key
+            if cache_key:
+                self.query_cache[cache_key] = answer
+                
+                # Limit cache size
+                if len(self.query_cache) > 100:
+                    # Remove oldest items (simple approach)
+                    keys_to_remove = list(self.query_cache.keys())[:20]
+                    for k in keys_to_remove:
+                        del self.query_cache[k]
+                
             return answer
             
         except Exception as e:

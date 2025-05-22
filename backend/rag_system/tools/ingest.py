@@ -7,11 +7,13 @@ import pytesseract
 from PIL import Image
 from bs4 import BeautifulSoup
 from pymongo import MongoClient
+import sys
+sys.path.append("..")
 
-from ..faiss_utils import save_faiss_index
-from ..utils import normalize_embedding
+from ..utils.faiss_utils import save_faiss_index
+from ..utils.embedding_utils import normalize_embedding
 from google.genai import types
-from backend.rag_system.config import (
+from rag_system.config import (
     MONGO_URI,
     DB_NAME,
     SOURCE_COLLECTION_NAME,
@@ -310,3 +312,5 @@ def _flush_to_faiss_and_mongo(rag,
             doc["vector_id"] = start + i
 
         rag.image_collection.insert_many(img_docs)
+    logger.info(f"Flushed {len(text_embs)} text and {len(img_embs)} image embeddings to FAISS and MongoDB.")
+    save_faiss_index(rag.faiss_index, FAISS_INDEX_PATH)

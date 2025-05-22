@@ -2,8 +2,8 @@ from dotenv import load_dotenv
 import os
 import sys
 from rag_system.embedding import load_sentence_embedding_model, load_clip_model
-from rag_system.faiss_utils import load_faiss_index
-from rag_system.mongo_utils import init_mongo_collections
+from backend.rag_system.utils.faiss_utils import load_faiss_index
+from backend.rag_system.utils.mongo_utils import init_mongo_collections
 from rag_system.prompt_builder import init_gemini_client
 from rag_system.multimodal_rag import MultimodalRAG
 from backend.rag_system.tools.ingest import batch_ingest_all

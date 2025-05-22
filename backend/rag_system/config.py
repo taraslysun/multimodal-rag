@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-FAISS_INDEX_PATH = "/home/taras/Documents/work/test_tasks/softserve/data/multimodal_faiss.index"
+FAISS_INDEX_PATH = "data/multimodal_faiss.index"
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 DB_NAME = "my_rag_database"
 TEXT_COLLECTION_NAME = "text_chunks"

@@ -29,3 +29,42 @@ multimodal_rag_app/
 ```
 - **backend/**: All the retrieval/embedding/Gemini logic.  
 - **frontend/**: The Streamlit application.
+
+## API Usage
+
+After building and running the Docker container, the API will be available at `http://localhost:8000`.
+
+### POST /generate
+
+Request JSON:
+```
+{
+  "text_query": "Your question here",         // optional
+  "image_base64": "...base64 string...",      // optional
+  "chat_history": [                            // optional
+    {"role": "user", "content": "..."},
+    {"role": "assistant", "content": "..."}
+  ]
+}
+```
+
+Response JSON:
+```
+{
+  "answer": "...model answer..."
+}
+```
+
+### Example curl
+```
+curl -X POST http://localhost:8000/generate \
+  -H "Content-Type: application/json" \
+  -d '{"text_query": "What is RAG?"}'
+```
+
+## Docker Build & Run
+
+```
+docker build -t multimodal-rag-api .
+docker run -p 8000:8000 multimodal-rag-api
+```

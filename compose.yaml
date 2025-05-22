@@ -1,0 +1,27 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: multimodal-backend
+    ports:
+      - "8000:8000"
+    networks:
+      - ragnet
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: multimodal-frontend
+    ports:
+      - "8501:8501"
+    depends_on:
+      - backend
+    networks:
+      - ragnet
+    restart: unless-stopped
+
+networks:
+  ragnet:
+    name: ragnet
+    driver: bridge
