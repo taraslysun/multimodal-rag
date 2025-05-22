@@ -8,10 +8,10 @@ from PIL import Image
 from bs4 import BeautifulSoup
 from pymongo import MongoClient
 
-from .faiss_utils import save_faiss_index
-from .utils import normalize_embedding
+from ..faiss_utils import save_faiss_index
+from ..utils import normalize_embedding
 from google.genai import types
-from config import (
+from backend.rag_system.config import (
     MONGO_URI,
     DB_NAME,
     SOURCE_COLLECTION_NAME,

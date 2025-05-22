@@ -1,6 +1,6 @@
 from sentence_transformers import SentenceTransformer
 from transformers import CLIPProcessor, CLIPModel
-from config import TEXT_EMB_MODEL, CLIP_MODEL_NAME, DEVICE
+from backend.rag_system.config import TEXT_EMB_MODEL, CLIP_MODEL_NAME, DEVICE
 import logging
 
 logger = logging.getLogger(__name__)

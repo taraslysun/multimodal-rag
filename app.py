@@ -12,8 +12,8 @@ from backend.rag_system.faiss_utils import load_faiss_index
 from backend.rag_system.mongo_utils import init_mongo_collections
 from backend.rag_system.prompt_builder import init_gemini_client
 from backend.rag_system.multimodal_rag import MultimodalRAG
-from backend.rag_system.ingest import batch_ingest_all
-from backend.config import (
+from backend.rag_system.tools.ingest import batch_ingest_all
+from backend.rag_system.config import (
     FAISS_INDEX_PATH,
     DB_NAME,
     GEMINI_API_KEY,
@@ -77,7 +77,7 @@ def load_backend():
     # 1e. Connect to MongoDB
     mongo_client, text_col, image_col = init_mongo_collections()
 
-    # 1f. Instantiate the RAG pipeline
+    # 1f. Instantiate the RAG pipeline with all required parameters
     rag = MultimodalRAG(
         gemini_client=gemini_client,
         faiss_index=faiss_index,
@@ -86,6 +86,8 @@ def load_backend():
         text_model=text_model,
         clip_model=clip_model,
         clip_processor=clip_processor,
+        gemini_model_name=GEMINI_MODEL_NAME,
+        top_k=TOP_K,
     )
 
     return rag
@@ -119,6 +121,12 @@ if submit_button:
 
             # Show a preview in the UI
             st.image(image_bytes, caption="🖼️ Uploaded image")
+            
+            # Get and display image description
+            with st.spinner("Analyzing image..."):
+                image_description = rag_system.get_image_description(image_bytes)
+                if image_description:
+                    st.info(f"**Image description:** {image_description}")
 
         with st.spinner("Running retrieval + Gemini (this can take 5–10 seconds)…"):
             answer = rag_system.query_and_generate(
@@ -127,11 +135,7 @@ if submit_button:
             )
         
         st.markdown("### 💡 Model Answer:")
-        # st.write(answer)
-
-        # -----------------------------------------------------------------
-        # 4. Detect & render any image URLs in the answer
-        # -----------------------------------------------------------------
+        
         # A simple regex to find URLs ending in .jpg/.jpeg/.png/.gif
         url_pattern = re.compile(r'(https?://\S+\.(?:jpg|jpeg|png|gif))', re.IGNORECASE)
         found_urls = url_pattern.findall(answer)

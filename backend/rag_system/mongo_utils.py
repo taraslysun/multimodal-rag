@@ -1,5 +1,5 @@
 from pymongo import MongoClient
-from config import MONGO_URI, DB_NAME, TEXT_COLLECTION_NAME, IMAGE_COLLECTION_NAME
+from backend.rag_system.config import MONGO_URI, DB_NAME, TEXT_COLLECTION_NAME, IMAGE_COLLECTION_NAME
 import logging
 
 logger = logging.getLogger(__name__)

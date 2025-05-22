@@ -1,6 +1,6 @@
 import os
 import faiss
-from config import FAISS_INDEX_PATH, FAISS_DIM
+from backend.rag_system.config import FAISS_INDEX_PATH, FAISS_DIM
 import logging
 
 logger = logging.getLogger(__name__)

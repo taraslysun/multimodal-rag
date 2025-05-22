@@ -6,8 +6,8 @@ from rag_system.faiss_utils import load_faiss_index
 from rag_system.mongo_utils import init_mongo_collections
 from rag_system.prompt_builder import init_gemini_client
 from rag_system.multimodal_rag import MultimodalRAG
-from rag_system.ingest import batch_ingest_all
-from config import (
+from backend.rag_system.tools.ingest import batch_ingest_all
+from backend.rag_system.config import (
     FAISS_INDEX_PATH,
     DB_NAME,
     GEMINI_API_KEY,
@@ -40,7 +40,7 @@ rag = MultimodalRAG(
 import time
 
 start = time.time()
-# batch_ingest_all(rag, batch_size=10, mini_batch_size=10)
+batch_ingest_all(rag, batch_size=10, mini_batch_size=10)
 end = time.time()
 print(f"Batch ingestion completed in {end - start:.2f} seconds.")
 
