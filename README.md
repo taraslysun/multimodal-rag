@@ -1,6 +1,8 @@
 # Multimodal RAG Demo (Text + Image) with Streamlit
 
-You can visit the live demo at [http://35.188.101.175:8501/](http://35.188.101.175:8501/).
+You can visit the live demo at [http://35.188.101.175:8501](http://35.188.101.175:8501/)
+
+[Video demo](https://drive.google.com/file/d/1NCMtVqin68RHTRair3CkDZqtQgvnONyp/view?usp=sharing)
 
 ## Overview
 
@@ -21,12 +23,18 @@ This repository demonstrates how to build a **Retrieval-Augmented Generation (RA
 ![Architecture](media/Multimodal_RAG.drawio.png)
 
 Tech stack:
-- **Vector Database**: FAISS for fast similarity search.
-- **Database**: MongoDB for storing metadata and content.
-- **openai/clip-vit-base-patch32**: For image embedding.
-- **Google Gemini 2.0 Flash**: For generating answers.
-- **Streamlit**: For the web interface.
-- **distiluse-base-multilingual-cased**: For text embedding.
+- **Vector Database**: FAISS for fast similarity search. Reason behind choosing FAISS simple index is that the scale of data is pretty small (around 1700 articles) and the data is not going to be updated frequently, so there really is no need to make overkill with tools like Elasticsearch or OpenSearch.
+- **Database**: MongoDB for storing metadata and content. It is easy to set up and works well with the data structure of article documents.
+- **openai/clip-vit-base-patch32**: For image embedding. Makes great use of the CLIP model to embed images and text into the same space.
+- **Google Gemini 2.0 Flash**: For generating answers. Fast and powerful multimodal model that can handle both text and images. Also the API calls are pretty cheap compared to other providers.
+- **distiluse-base-multilingual-cased**: For text embedding. Works pretty well for the task and is fast enough to be used in production. Also has the same dimensionality as the CLIP model, so it is great to integrate with it.
+
+
+## Example Output
+Here is the list of few examples of system in action:
+![Example 1](media/example1.png)
+![Example 2](media/example2.png)
+![Example 3](media/example3.png)
 
 
 ## Project Structure
@@ -79,7 +87,7 @@ Make sure Docker and Docker Compose are installed. Then run:
 GEMINI_API_KEY=<YOUR_GEMINI_API_KEY>
 MONGO_URI=<YOUR_MONGO_URI>
 ```
-- Build and run the containers:
+- Build and run the containers (**as we are using pytorch for embedding, the image is quite large, so it may take a while to build**):
 ```bash
 docker compose up --build
 ```
@@ -176,7 +184,7 @@ Response JSON:
 ```bash
 curl -X POST http://localhost:8000/generate \
   -H "Content-Type: application/json" \
-  -d '{"text_query": "What's the lates news on AI safety?"}'
+  -d '{"text_query": "Whats the latest news on AI safety?"}'
 ```
 
 ---
