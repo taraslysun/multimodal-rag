@@ -1,7 +1,3 @@
-# ----------------------------------------------
-# frontend/app.py
-# ----------------------------------------------
-
 import re
 import streamlit as st
 from PIL import Image
@@ -9,9 +5,6 @@ import io
 import requests
 import base64
 
-# ----------------------------------------------
-# Streamlit UI Setup
-# ----------------------------------------------
 
 st.set_page_config(
     page_title="Multimodal RAG Chat",
@@ -41,8 +34,6 @@ with st.sidebar:
 4. The answer appears as chat bubbles below, and any inline Markdown images (`![...]()`) will render automatically.  
 """
     )
-    st.markdown("---")
-    st.write("**Device:** HTTP Backend")
 
 # ---------------------------------------------------------------------
 # Backend URL

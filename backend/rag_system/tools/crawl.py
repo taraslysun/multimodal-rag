@@ -12,13 +12,14 @@ from urllib.parse import urljoin
 def parse_args():
     parser = argparse.ArgumentParser(description="Crawl Ghost blog and upsert articles to MongoDB.")
     parser.add_argument('--mongo-uri', type=str, default="mongodb://localhost:27017/", help='MongoDB URI')
-    parser.add_argument('--db-name', type=str, default="my_rag_database", help='MongoDB database name')
+    parser.add_argument('--db-name', type=str, default="rag_database", help='MongoDB database name')
     parser.add_argument('--collection-name', type=str, default="articles", help='MongoDB collection name')
     parser.add_argument('--ghost-api-base', type=str, default="https://dl-staging-website.ghost.io/ghost/api/content", help='Ghost API base URL')
     parser.add_argument('--ghost-api-key', type=str, default="a4b216e975091c63cc39c1ac98", help='Ghost API key')
     parser.add_argument('--deeplearning-ai-base', type=str, default="https://www.deeplearning.ai/the-batch/", help='Base URL for deeplearning.ai')
     parser.add_argument('--posts-per-page', type=int, default=15, help='Posts per page')
     parser.add_argument('--initial-tags', type=str, nargs='+', default=["large-language-models-llms"], help='Initial tag slugs to crawl')
+    parser.add_argument('--cookie', type=str, default="v_7Wdn7Y_3E7b3v5FzsK6", help='Read in README, how to get this cookie')
     return parser.parse_args()
 
 # ------------------------------------------------------------
@@ -54,7 +55,7 @@ def upsert_articles(docs, articles_col):
         print(f"  Skipped {skipped} (already in DB)")
         return None
 
-def crawl_all_tags(initial_tags, articles_col, ghost_api_base, ghost_api_key, deeplearning_ai_base, posts_per_page):
+def crawl_all_tags(initial_tags, articles_col, ghost_api_base, ghost_api_key, deeplearning_ai_base, posts_per_page, cookie):
     """
     Crawl Ghost posts by tag, starting from `initial_tags`.
     Maintains a queue of tag slugs to process, and a set of already‐processed tags.
@@ -111,7 +112,7 @@ def crawl_all_tags(initial_tags, articles_col, ghost_api_base, ghost_api_key, de
         """
         Given a tag slug, return the number of articles under that tag.
         """
-        resp = requests.get(f'https://www.deeplearning.ai/_next/data/2HpDvYc1z_k6duU9sMQWm/the-batch/tag/{tag_slug}.json?slug={tag_slug}')
+        resp = requests.get(f'https://www.deeplearning.ai/_next/data/{cookie}/the-batch/tag/{tag_slug}.json?slug={tag_slug}')
         try:
             data = json.loads(resp.text)
         except json.JSONDecodeError:
@@ -169,7 +170,7 @@ def crawl_all_tags(initial_tags, articles_col, ghost_api_base, ghost_api_key, de
             upsert_articles(docs_this_page, articles_col)
 
             page += 1
-            time.sleep(1)
+            time.sleep(0.3)  # Avoid hitting API too hard
 
         seen_tags.add(current_tag)
         print(f"=== Finished tag: '{current_tag}' ===")
@@ -187,5 +188,6 @@ if __name__ == "__main__":
         ghost_api_base=args.ghost_api_base,
         ghost_api_key=args.ghost_api_key,
         deeplearning_ai_base=args.deeplearning_ai_base,
-        posts_per_page=args.posts_per_page
+        posts_per_page=args.posts_per_page,
+        cookie=args.cookie
     )

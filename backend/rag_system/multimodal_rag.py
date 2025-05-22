@@ -50,24 +50,18 @@ class MultimodalRAG:
             emb = self.text_model.encode(query, convert_to_numpy=True)
         return normalize_embedding(emb)
 
-    @lru_cache(maxsize=50)  # Cache image embeddings by hash
-    def _embed_image_with_cache(self, img_hash: str, pil_image: Image.Image) -> np.ndarray:
-        """Helper method to enable caching of image embeddings"""
+
+    def embed_image(self, pil_image: Image.Image) -> np.ndarray:
+        """Get image embedding"""
         inputs = self.clip_processor(images=pil_image, return_tensors="pt").to(self.clip_model.device)
         with torch.no_grad():
             img_features = self.clip_model.get_image_features(**inputs)
         img_features = img_features.cpu().numpy().squeeze()
         return normalize_embedding(img_features)
 
-    def embed_image(self, pil_image: Image.Image) -> np.ndarray:
-        """Get image embedding with caching based on image hash"""
-        # Generate a hash of the image for caching
-        img_hash = str(hash(pil_image.tobytes()))
-        return self._embed_image_with_cache(img_hash, pil_image)
-
     def combine_embeddings(
         self, text_emb: Optional[np.ndarray], image_emb: Optional[np.ndarray]
-    ) -> np.ndarray:
+        ) -> np.ndarray:
         if text_emb is not None and image_emb is not None:
             combined = text_emb + image_emb
             return normalize_embedding(combined)
@@ -204,16 +198,16 @@ class MultimodalRAG:
                 text_emb = self.embed_text(enhanced_query)
 
             # 3. Embed image if present
-            # image_emb = None
-            # if pil_img is not None:
-            #     image_emb = self.embed_image(pil_img)
+            image_emb = None
+            if pil_img is not None:
+                image_emb = self.embed_image(pil_img)
 
             # 4. Combine into one query embedding
-            # query_emb = self.combine_embeddings(text_emb, image_emb)
+            query_emb = self.combine_embeddings(text_emb, image_emb)
 
 
             # 5. Retrieve top-K vector_ids from FAISS
-            top_vector_ids = self.retrieve_top_k(text_emb)
+            top_vector_ids = self.retrieve_top_k(query_emb)
             if not top_vector_ids:
                 return "No relevant content found."
     

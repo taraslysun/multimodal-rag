@@ -19,3 +19,11 @@ class IngestRequest(BaseModel):
     batch_size: int = 50
     mini_batch_size: int = 50
 
+class IngestCollectionRequest(BaseModel):
+    source_db_url: str
+    source_db_name: str
+    source_collection_name: str
+
+
+class IngestSingleRequest(IngestRequest):
+    url: str

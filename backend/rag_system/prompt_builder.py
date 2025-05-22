@@ -34,7 +34,7 @@ def build_gemini_prompt(text_chunks: List[Dict], image_docs: Optional[List[Dict]
         prompt += "### Previous Conversation:\n"
         for msg in chat_history:
             role = msg.get("role", "")
-            content = msg.get("content", "").strip()
+            content = msg.get("content", "")
             if role == "user":
                 prompt += f"User: {content}\n\n"
             elif role == "assistant":
@@ -47,9 +47,9 @@ def build_gemini_prompt(text_chunks: List[Dict], image_docs: Optional[List[Dict]
     # Process text chunks
     prompt += "### Retrieved Information:\n"
     for idx, chunk_doc in enumerate(text_chunks, start=1):
-        txt = chunk_doc.get("text_chunk", "").strip()
+        txt = chunk_doc.get("text_chunk", "")
         src = chunk_doc.get("source_url", "")
-        title = chunk_doc.get("title", chunk_doc.get("article_title", "")).strip()
+        title = chunk_doc.get("title", chunk_doc.get("article_title", ""))
         
         if title:
             prompt += f"[Article Title: {title}]\n"
@@ -61,9 +61,9 @@ def build_gemini_prompt(text_chunks: List[Dict], image_docs: Optional[List[Dict]
         prompt += "Below are images (with OCR captions) related to those excerpts:\n"
         for idx, img_doc in enumerate(image_docs, start=1):
             url = img_doc.get("image_url", "")
-            ocr = img_doc.get("ocr_text", "").strip()
-            desc = img_doc.get("desc_text", "").strip()
-            alt_text = img_doc.get("alt_text", "").strip()
+            ocr = img_doc.get("ocr_text", "")
+            desc = img_doc.get("desc_text", "")
+            alt_text = img_doc.get("alt_text", "")
             
             prompt += f"[Image {idx}]: {url}\n"
             if alt_text:
