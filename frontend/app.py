@@ -35,9 +35,6 @@ with st.sidebar:
 """
     )
 
-# ---------------------------------------------------------------------
-# Backend URL
-# ---------------------------------------------------------------------
 
 BACKEND_URL = "http://multimodal-backend:8000/generate"  # Docker Compose service name
 
@@ -84,12 +81,9 @@ if uploaded_file:
 else:
     image_bytes = None
 
-# 3b. Chat input
 user_message = st.chat_input("Type your message here...")
 
-# 3c. When user sends a message
 if user_message:
-    # 3c(i). Append user message to history (with any image bytes)
     st.session_state.history.append({
         "sender": "user",
         "message": user_message,
@@ -102,12 +96,10 @@ if user_message:
             st.image(image_bytes, caption="You uploaded this image")
         st.markdown(user_message)
 
-    # 3c(ii). Call backend to get assistant response
     with st.chat_message("assistant"):
         placeholder = st.empty()
-        placeholder.markdown("Thinking…")  # typing indicator
+        placeholder.markdown("Thinking...")
 
-        # Prepare chat history for backend
         chat_history = [
             {"role": h["sender"], "content": h["message"]}
             for h in st.session_state.history if h["sender"] in ("user", "assistant")
@@ -126,7 +118,6 @@ if user_message:
         except Exception as e:
             answer = f"Error: {e}"
 
-        # Render answer
         placeholder.markdown(answer)
 
     # 3c(iii). Append assistant response to history
